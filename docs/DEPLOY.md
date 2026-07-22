@@ -45,6 +45,8 @@ flowchart TD
    https://github.com/jackbest886/CPR.git
    ```
 
+   > 💡 填好这个地址、点创建后，Cloud Studio 会替您把代码下载好。所以**走「代码仓库」这条路，您全程都不用自己敲 clone 命令**，直接进入第二步「确认代码已到位」即可。
+
 5. 在「运行环境 / 模板」那里，选择 **「Node.js」**（如果列表里没有 Node.js，就选 **「Ubuntu」**，两者都自带运行环境）。
 
    > 💡 选 Node.js 就好，它里面已经预装了我们需要的 Node 18+ 环境，不用您再装任何东西。
