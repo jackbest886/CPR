@@ -175,6 +175,53 @@ export const COMBINATION_KEYWORDS: string[] = [
   '透皮',
   '伤口闭合',
   '生物材料',
+  // —— 以下为 21 CFR 3.2(e) 组合产品术语扩充（具体复合词，非泛词）——
+  'drug/biologic',
+  'biologic-device',
+  'biologic/device',
+  'biologic device',
+  'drug-biologic',
+  'drug biologic',
+  'pen injector',
+  'insulin pen',
+  'injector pen',
+  'drug-eluting',
+  'drug eluting',
+  'transdermal',
+  'transdermal patch',
+  'transdermal system',
+  'co-packaged',
+  'co-packaged combination',
+  'cross-labeled',
+  'cross-labeling',
+  'on-body delivery',
+  'wearable injector',
+  'metered dose inhaler',
+  'antibiotic bone cement',
+  'antimicrobial coating',
+  'device coated',
+  'impregnated with drug',
+  'drug-coated',
+  'antibody-drug conjugate',
+  'antibody-drug conjugates',
+  'office of combination products',
+  'primary mode of action',
+  'constituent part',
+  '21 cfr part 4',
+  '21 cfr part 3',
+  'request for designation',
+  'rfd process',
+  'drug-device combination',
+  'drug/device',
+  '药械组合产品',
+  '药物器械组合',
+  '生物制品组合',
+  '药物洗脱支架',
+  '透皮贴剂',
+  '共包装',
+  '联合包装',
+  '交叉标记',
+  '交叉标签',
 ];
 
 /**
@@ -240,11 +287,29 @@ export const FEDERAL_REGISTER_API = {
   keyword: 'combination product',
   perPage: 20,
   /**
-   * 多关键词采集：每个关键词都限定 FDA agency（agencySlug），
-   * 覆盖更多真实组合产品来源。三个词均在 COMBINATION_KEYWORDS 中，
-   * 因此通过 pipeline 的 isRealDocument 校验，不会误伤也不会漏掉真实文档。
+   * 多关键词采集：每个关键词都单独向 Federal Register 发起翻页查询，且均限定
+   * FDA agency（agencySlug）。覆盖 FDA 组合产品的多类术语（药械 / 生物制品-器械 /
+   * 药-生物制品 / 预充注射 / 自动注射 / 注射笔 / 药物洗脱 / 透皮 / 共包装 / 交叉标签），
+   * 所有查询词均能在 COMBINATION_KEYWORDS 中找到对应子串（或因文档同时含
+   * "combination product" 等已命中项），因此通过 pipeline 的 isRealDocument 校验，
+   * 不会误伤也不会漏掉真实文档。
    */
-  keywords: ['combination product', 'prefilled syringe', 'auto-injector'],
+  keywords: [
+    'combination product',
+    'combination products',
+    'drug-device',
+    'drug/device',
+    'biologic-device',
+    'biologic/device',
+    'prefilled syringe',
+    'pre-filled syringe',
+    'auto-injector',
+    'pen injector',
+    'drug-eluting',
+    'transdermal',
+    'co-packaged',
+    'cross-labeled',
+  ],
 } as const;
 
 /** Federal Register 翻页采集上限：单个关键词最多抓取的页数（明确上限，避免死循环） */
