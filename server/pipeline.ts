@@ -118,9 +118,11 @@ export class Pipeline {
       return false;
     }
 
-    // 内容长度至少 50 字符（标题或正文）
+    // 内容长度至少 30 字符（标题或正文）。相较原 50 略放宽，以容纳真实的短标题
+    // 组合产品文档（如 EMA 新闻 / 指导原则）。此轻微调整不会 reintroduce 垃圾：
+    // 导航/栏目页已被 isJunkNavigation 拦截，无关键词条目仍被下方二次确认拦截。
     const text = `${raw.title} ${raw.content ?? ''}`;
-    if (text.replace(/\s+/g, '').length < 50) {
+    if (text.replace(/\s+/g, '').length < 30) {
       return false;
     }
 

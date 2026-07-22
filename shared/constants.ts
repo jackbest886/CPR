@@ -107,18 +107,29 @@ export const DEFAULT_FDA_RSS: SourceFeed[] = [
   },
 ];
 
-/** EMA 默认采集源（RSS + CHMP 意见） */
+/**
+ * EMA 默认采集源（RSS）。
+ *
+ * 历史 URL `https://www.ema.europa.eu/en/news/rss.xml` 与
+ * `https://www.ema.europa.eu/en/rss-feed/medicines-human/chronological.xml`
+ * 已于 2025 年后返回 HTTP 404。下方两个 URL 已通过 WebFetch 实测返回 200 且
+ * 含合法 `<item>`（news.xml） / 聚合内容（whats-new.xml），作为替代源。
+ *
+ * 说明：EMA 官方新闻多为通用监管动态，含「组合产品 / combination product」等
+ * 关键词的条目较少，因此多数采集运行中 EMA 经四重校验后入库数为 0 属正常
+ * （并非源失效），一旦 EMA 发布组合产品相关新闻即可被捕获。
+ */
 export const DEFAULT_EMA_RSS: SourceFeed[] = [
   {
     source: 'EMA',
     sourceSub: 'News',
-    url: 'https://www.ema.europa.eu/en/news/rss.xml',
+    url: 'https://www.ema.europa.eu/en/news.xml',
     kind: 'rss',
   },
   {
     source: 'EMA',
-    sourceSub: 'CHMP',
-    url: 'https://www.ema.europa.eu/en/rss-feed/medicines-human/chronological.xml',
+    sourceSub: 'WhatsNew',
+    url: 'https://www.ema.europa.eu/en/whats-new.xml',
     kind: 'rss',
   },
 ];

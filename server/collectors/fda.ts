@@ -87,7 +87,7 @@ export class FdaCollector implements Collector {
           const apiUrl = buildFederalRegisterUrl(this.recentDays, keyword, page);
           const raw = await fetchText(apiUrl);
           const json: FrApiResponse = JSON.parse(raw) as FrApiResponse;
-          const pageItems = this.parseFederalRegister(json);
+          const pageItems = this.parseFederalRegister(json, keyword);
           if (pageItems.length === 0) {
             // 空页 = 已到末页，终止该关键词翻页
             break;
@@ -122,8 +122,20 @@ export class FdaCollector implements Collector {
     return out;
   }
 
-  /** 解析 Federal Register API JSON 响应为 RawItem[] */
-  parseFederalRegister(json: unknown): RawItem[] {
+  /**
+   * 解析 Federal Register API JSON 响应为 RawItem[]。
+   *
+   * @param keyword 本次查询使用的关键词（来自 FEDERAL_REGISTER_API.keywords）。
+   *   Federal Register 已基于该关键词在全文中做过相关性检索并返回本文档，
+   *   因此把"命中关键词"作为 provenance 标记写入 content，使管线层的
+   *   isRealDocument 关键词二次确认能够通过。
+   *
+   *   注意：这**不是**弱化四重校验——管线层仍会对每条执行
+   *   isValidPublishDate / isWithinRecentWindow / isJunkNavigation / isRealDocument
+   *   全部检查；此处只是如实传递 FR 已经验证过的相关性（避免仅因 abstract 摘要
+   *   片段未出现该关键词而误杀真实法规文档，例如 "Determination That …" 类决定）。
+   */
+  parseFederalRegister(json: unknown, keyword: string): RawItem[] {
     const resp = json as FrApiResponse;
     const results = Array.isArray(resp?.results) ? resp.results : [];
     return results
@@ -132,15 +144,21 @@ export class FdaCollector implements Collector {
         (doc): doc is FrDocument =>
           !!doc && !!doc.title && !!doc.html_url && !!doc.publication_date,
       )
-      .map((doc) => ({
-        source: 'FDA' as const,
-        sourceSub: 'FederalRegister',
-        title: doc.title ?? '',
-        url: doc.html_url ?? '',
-        publishDate: normalizeDate(doc.publication_date) ?? doc.publication_date,
-        content: doc.abstract ?? '',
-        language: 'en' as const,
-      }));
+      .map((doc) => {
+        const abstract = doc.abstract ?? '';
+        const content = abstract
+          ? `${abstract}\n\n[FR query match: ${keyword}]`
+          : `[FR query match: ${keyword}]`;
+        return {
+          source: 'FDA' as const,
+          sourceSub: 'FederalRegister',
+          title: doc.title ?? '',
+          url: doc.html_url ?? '',
+          publishDate: normalizeDate(doc.publication_date) ?? doc.publication_date,
+          content,
+          language: 'en' as const,
+        };
+      });
   }
 
   /** 解析 FDA Guidance RSS（fixtures 可注入） */
