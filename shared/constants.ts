@@ -299,11 +299,18 @@ export const FEDERAL_REGISTER_API = {
   perPage: 20,
   /**
    * 多关键词采集：每个关键词都单独向 Federal Register 发起翻页查询，且均限定
-   * FDA agency（agencySlug）。覆盖 FDA 组合产品的多类术语（药械 / 生物制品-器械 /
-   * 药-生物制品 / 预充注射 / 自动注射 / 注射笔 / 药物洗脱 / 透皮 / 共包装 / 交叉标签），
-   * 所有查询词均能在 COMBINATION_KEYWORDS 中找到对应子串（或因文档同时含
-   * "combination product" 等已命中项），因此通过 pipeline 的 isRealDocument 校验，
-   * 不会误伤也不会漏掉真实文档。
+   * FDA agency（agencySlug）。覆盖 FDA 组合产品的高度精准核心术语（药械 /
+   * 生物制品-器械 / 药-生物制品 / 预充注射 / 自动注射 / 注射笔 / 药物洗脱）。
+   *
+   * 已移除的宽泛词及原因（这些词会误命中大量非组合产品文档）：
+   * - `transdermal`：单独使用会命中所有透皮药物文档（多数是纯药物，非组合产品）。
+   * - `co-packaged`：可能命中非组合产品的共包装文档。
+   * - `cross-labeled`：可能命中非组合产品的交叉标签文档。
+   *
+   * 保留的 11 个词均为高度精准的组合产品术语，命中的文档大概率是真组合产品法规。
+   * 所有查询词均能在 COMBINATION_KEYWORDS 中找到对应子串，配合 fda.ts 的条件式
+   * provenance 策略（仅当标题/摘要本身命中 COMBINATION_KEYWORDS 才加标记），
+   * 确保 pipeline 的 isRealDocument 四重校验有效，不会误收非组合产品文档。
    */
   keywords: [
     'combination product',
@@ -317,9 +324,6 @@ export const FEDERAL_REGISTER_API = {
     'auto-injector',
     'pen injector',
     'drug-eluting',
-    'transdermal',
-    'co-packaged',
-    'cross-labeled',
   ],
 } as const;
 

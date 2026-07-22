@@ -16,6 +16,7 @@ import {
   COLLECT_RECENT_DAYS_DEFAULT,
   MAX_FR_PAGES,
   MAX_FR_DOCS,
+  COMBINATION_KEYWORDS,
   type SourceFeed,
 } from '../../shared/constants';
 import { Collector, fetchText, normalizeDate } from './base';
@@ -126,29 +127,49 @@ export class FdaCollector implements Collector {
    * 解析 Federal Register API JSON 响应为 RawItem[]。
    *
    * @param keyword 本次查询使用的关键词（来自 FEDERAL_REGISTER_API.keywords）。
-   *   Federal Register 已基于该关键词在全文中做过相关性检索并返回本文档，
-   *   因此把"命中关键词"作为 provenance 标记写入 content，使管线层的
-   *   isRealDocument 关键词二次确认能够通过。
    *
-   *   注意：这**不是**弱化四重校验——管线层仍会对每条执行
-   *   isValidPublishDate / isWithinRecentWindow / isJunkNavigation / isRealDocument
-   *   全部检查；此处只是如实传递 FR 已经验证过的相关性（避免仅因 abstract 摘要
-   *   片段未出现该关键词而误杀真实法规文档，例如 "Determination That …" 类决定）。
+   * provenance 策略（条件式标记）：
+   * 只当文档的**标题或摘要本身**已命中 `COMBINATION_KEYWORDS` 时，才把
+   * `[FR query match: ${keyword}]` provenance 标记追加到 content（作为辅助，
+   * 确保 isRealDocument 关键词二次确认通过）。否则**不加任何标记**，仅返回
+   * 原始摘要，让 isRealDocument 严格判定——非组合产品文档将被正确过滤。
+   *
+   * 这样做的理由：Federal Register 的全文检索是宽松的相关性匹配，可能仅因
+   * 脚注/附件中提及关键词就返回文档。若无条件给每条加 provenance 标记，
+   * 会让 isRealDocument 的关键词二次确认形同虚设（因为 keyword 本身就是
+   * COMBINATION_KEYWORDS 之一，标记注入后必然通过）。条件式标记确保只有
+   * 标题/摘要本身确实涉及组合产品的文档才入库，避免非组合产品文档混入看板。
+   *
+   * 注意：这**不弱化**四重校验——管线层仍会对每条执行
+   * isValidPublishDate / isWithinRecentWindow / isJunkNavigation / isRealDocument
+   * 全部检查。
    */
   parseFederalRegister(json: unknown, keyword: string): RawItem[] {
     const resp = json as FrApiResponse;
     const results = Array.isArray(resp?.results) ? resp.results : [];
     return results
       // 防御：跳过 null/undefined 脏条目；并要求 title/html_url/publication_date 齐备（去空）
-      .filter(
-        (doc): doc is FrDocument =>
-          !!doc && !!doc.title && !!doc.html_url && !!doc.publication_date,
+      .filter((doc): doc is FrDocument =>
+        !!doc && !!doc.title && !!doc.html_url && !!doc.publication_date,
       )
       .map((doc) => {
         const abstract = doc.abstract ?? '';
+        // 只当标题或摘要本身命中 COMBINATION_KEYWORDS 时，才认为这是真实组合产品文档
+        // 此时加 provenance 标记作为辅助（确保 isRealDocument 通过）；
+        // 否则不加标记，让 isRealDocument 严格判定（非组合产品文档会被正确过滤）
+        const titleLower = (doc.title ?? '').toLowerCase();
+        const abstractLower = abstract.toLowerCase();
+        const isComboRelated = COMBINATION_KEYWORDS.some(
+          (kw) =>
+            titleLower.includes(kw.toLowerCase()) ||
+            abstractLower.includes(kw.toLowerCase()),
+        );
+        const provenanceTag = isComboRelated
+          ? `\n\n[FR query match: ${keyword}]`
+          : '';
         const content = abstract
-          ? `${abstract}\n\n[FR query match: ${keyword}]`
-          : `[FR query match: ${keyword}]`;
+          ? `${abstract}${provenanceTag}`
+          : provenanceTag.replace(/^\n\n/, '');
         return {
           source: 'FDA' as const,
           sourceSub: 'FederalRegister',
