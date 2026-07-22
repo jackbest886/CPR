@@ -23,16 +23,13 @@ const ClassificationSchema = z.object({
   status: z.enum(REG_STATUSES as [string, ...string[]]).nullable(),
   tags: z.array(z.string()),
   summary: z.string(),
-  title: z.string().nullable().optional(),
 });
 
 /** 系统提示词（OpenAI 路径；国内路径会追加 JSON 约束，见 classify） */
 const SYSTEM_PROMPT =
   '你是法规情报分类助手。根据标题与正文，判断法规类型、状态，' +
   '给出中文语义标签（组合形态 + 维度），并生成一句话中文摘要。' +
-  '若原文为英文（如 FDA / NMPA 英文镜像条目），必须将 title 字段返回为中文翻译版本；' +
-  '若原文已是中文，title 字段可省略或返回原标题。' +
-  '字段为：type / status / tags / summary / title。';
+  '字段为：type / status / tags / summary。';
 
 /** 分类器配置（由 createClassifier 传入） */
 type ClassifierConfig = {
@@ -86,7 +83,6 @@ export class LlmClassifier implements Classifier {
           status: (parsed.status as Classification['status']) ?? undefined,
           tags: parsed.tags,
           summary: parsed.summary,
-          title: parsed.title ?? undefined,
         };
       }
 
@@ -100,8 +96,7 @@ export class LlmClassifier implements Classifier {
             content:
               SYSTEM_PROMPT +
               '\n仅输出一个 JSON 对象，不要包含任何解释文字或 Markdown 代码块，' +
-              '字段为：type（字符串）、status（字符串或 null）、tags（字符串数组）、summary（字符串）。' +
-              '必须包含 title 字段（若原文为英文，返回中文翻译；若原文已是中文，可省略或返回原标题）。',
+              '字段为：type（字符串）、status（字符串或 null）、tags（字符串数组）、summary（字符串）。',
           },
           {
             role: 'user',
@@ -122,7 +117,6 @@ export class LlmClassifier implements Classifier {
         status: (parsed.status as Classification['status']) ?? undefined,
         tags: parsed.tags,
         summary: parsed.summary,
-        title: parsed.title ?? undefined,
       };
     } catch (e) {
       console.warn('[llm] 分类失败，回退到规则分类器:', (e as Error).message);

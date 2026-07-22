@@ -53,3 +53,43 @@ describe('RuleClassifier', () => {
     expect(extractSummary('', '标题A')).toBe('标题A');
   });
 });
+
+/**
+ * 回归测试：规则分类器不再翻译标题、不再返回 title 字段。
+ * 对应源改动：classifiers/index.ts 删除 EN_ZH_MAP / translateEnTitle，
+ * classify 仅返回 { type, status, tags, summary }。
+ */
+describe('RuleClassifier — 标题不翻译且不含 title 字段', () => {
+  it('英文 RawItem 分类结果不含 title 字段', async () => {
+    const r = await classifier.classify({
+      source: 'FDA',
+      title: 'Guidance on Prefilled Syringe Combination Products',
+      url: 'https://fda.gov/x',
+      content:
+        'This guidance describes design considerations for prefilled syringe combination products used in diabetes treatment.',
+    });
+
+    // 关键回归断言：分类结果不再携带 title
+    expect(r).not.toHaveProperty('title');
+    expect((r as unknown as Record<string, unknown>).title).toBeUndefined();
+
+    // 其余结构化字段仍完整产出
+    expect(r).toHaveProperty('type');
+    expect(r).toHaveProperty('tags');
+    expect(r).toHaveProperty('summary');
+  });
+
+  it('英文 RawItem 的 summary 基于原文英文，未被翻译为中文', async () => {
+    const r = await classifier.classify({
+      source: 'FDA',
+      title: 'Combination Products: Prefilled Syringe Guidance',
+      url: 'https://fda.gov/p',
+      content:
+        'This guidance addresses prefilled syringe combination products and related labeling for diabetes.',
+    });
+
+    // summary 抽取自原文英文正文，应保留英文关键词且不含中文字符
+    expect(r.summary).toContain('prefilled');
+    expect(r.summary).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+});

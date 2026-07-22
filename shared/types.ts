@@ -38,8 +38,6 @@ export interface Classification {
   status?: RegStatus;
   tags: string[];
   summary: string;
-  /** LLM 或规则分类器对原文标题的中文翻译（仅当原文非中文时填写，中文原文不填） */
-  title?: string;
 }
 
 /** 状态变更历史记录 */

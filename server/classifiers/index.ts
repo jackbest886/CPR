@@ -103,58 +103,6 @@ export function extractSummary(content: string, title: string): string {
 }
 
 /**
- * 简易英文→中文关键词映射翻译（无 LLM 时对英文标题做基本可读中文转换）。
- * 用于 RuleClassifier 对 language='en' 条目的兜底处理。
- */
-const EN_ZH_MAP: { en: string; zh: string }[] = [
-  { en: 'combination product', zh: '组合产品' },
-  { en: 'combination products', zh: '组合产品' },
-  { en: 'guidance', zh: '指南' },
-  { en: 'guideline', zh: '指南' },
-  { en: 'regulation', zh: '法规' },
-  { en: 'directive', zh: '指令' },
-  { en: 'draft', zh: '征求意见稿' },
-  { en: 'approval', zh: '批准' },
-  { en: 'approved', zh: '已批准' },
-  { en: 'pre-filled syringe', zh: '预充式注射器' },
-  { en: 'prefilled syringe', zh: '预充式注射器' },
-  { en: 'auto-injector', zh: '自动注射笔' },
-  { en: 'drug-device', zh: '药械组合' },
-  { en: 'drug device', zh: '药械组合' },
-  { en: 'drug-eluting', zh: '药物洗脱' },
-  { en: 'drug-coated', zh: '药物涂层' },
-  { en: 'transdermal', zh: '透皮' },
-  { en: 'implantable', zh: '植入式' },
-  { en: 'inhalation', zh: '吸入' },
-  { en: 'medical device', zh: '医疗器械' },
-  { en: 'drug', zh: '药品' },
-  { en: 'device', zh: '器械' },
-  { en: 'safety', zh: '安全' },
-  { en: 'quality', zh: '质量' },
-  { en: 'announcement', zh: '公告' },
-  { en: 'notice', zh: '通知' },
-  { en: 'policy', zh: '政策' },
-  { en: 'interpretation', zh: '解读' },
-  { en: 'clinical trial', zh: '临床试验' },
-  { en: 'marketing authorization', zh: '上市许可' },
-];
-
-/**
- * 对英文标题做简易关键词映射翻译，产出基本可读的中文摘要。
- * 逐词替换已知术语，未命中的英文单词原样保留，确保无 LLM 时也有基本可读性。
- */
-export function translateEnTitle(title: string): string {
-  let result = title;
-  // 按短语长度降序替换，避免短词覆盖长短语
-  const sorted = [...EN_ZH_MAP].sort((a, b) => b.en.length - a.en.length);
-  for (const { en, zh } of sorted) {
-    const re = new RegExp(en.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    result = result.replace(re, zh);
-  }
-  return result;
-}
-
-/**
  * 规则分类器（默认）：无密钥可完整跑通。
  */
 export class RuleClassifier implements Classifier {
@@ -164,18 +112,10 @@ export class RuleClassifier implements Classifier {
     const status = detectStatus(text);
     const tags = detectTags(text);
 
-    // 英文条目：翻译标题作为中文标题与摘要兜底；中文条目保持原标题
-    let summary = extractSummary(item.content ?? '', item.title);
-    let translatedTitle: string | undefined;
-    if (item.language === 'en') {
-      const translated = translateEnTitle(item.title);
-      if (translated !== item.title) {
-        translatedTitle = translated;
-        summary = translated.slice(0, SUMMARY_EXTRACT_CHARS);
-      }
-    }
+    // 抽取式摘要直接使用原文内容与标题，不翻译标题、不因语言改写摘要
+    const summary = extractSummary(item.content ?? '', item.title);
 
-    return { type, status, tags, summary, title: translatedTitle };
+    return { type, status, tags, summary };
   }
 }
 

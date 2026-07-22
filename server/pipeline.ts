@@ -37,8 +37,8 @@ export function toRegulation(
 ): Regulation {
   return {
     id: randomUUID(),
-    // 优先用 LLM 翻译后的中文标题；若 LLM 未返回或原文已是中文，保持原 title
-    title: cls.title && cls.title.trim().length > 0 ? cls.title : raw.title,
+    // 永远使用原始标题（保持原文语言，不做翻译写回）
+    title: raw.title,
     source: raw.source as Source,
     sourceSub: raw.sourceSub,
     publishDate: raw.publishDate,
