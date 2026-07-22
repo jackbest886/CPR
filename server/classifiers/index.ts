@@ -164,16 +164,18 @@ export class RuleClassifier implements Classifier {
     const status = detectStatus(text);
     const tags = detectTags(text);
 
-    // 英文条目：使用翻译后的标题作为摘要兜底
+    // 英文条目：翻译标题作为中文标题与摘要兜底；中文条目保持原标题
     let summary = extractSummary(item.content ?? '', item.title);
+    let translatedTitle: string | undefined;
     if (item.language === 'en') {
       const translated = translateEnTitle(item.title);
       if (translated !== item.title) {
+        translatedTitle = translated;
         summary = translated.slice(0, SUMMARY_EXTRACT_CHARS);
       }
     }
 
-    return { type, status, tags, summary };
+    return { type, status, tags, summary, title: translatedTitle };
   }
 }
 
