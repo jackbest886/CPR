@@ -299,12 +299,19 @@ export class RegulationRepository {
   async listForDedup(): Promise<
     { id: string; originalUrl: string; title: string; content: string | null }[]
   > {
-    return this.db.all<{
+    const rows = await this.db.all<{
       id: string;
       original_url: string;
       title: string;
       content: string | null;
     }>('SELECT id, original_url, title, content FROM regulations');
+    // 将蛇形列名映射为模型 camelCase，保证调用方按 originalUrl 精确查重可用
+    return rows.map((r) => ({
+      id: r.id,
+      originalUrl: r.original_url,
+      title: r.title,
+      content: r.content,
+    }));
   }
 
   /** 按归一化 original_url 精确查重 */

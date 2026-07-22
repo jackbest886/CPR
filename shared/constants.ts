@@ -239,10 +239,21 @@ export const FEDERAL_REGISTER_API = {
   agencySlug: 'food-and-drug-administration',
   keyword: 'combination product',
   perPage: 20,
+  /**
+   * 多关键词采集：每个关键词都限定 FDA agency（agencySlug），
+   * 覆盖更多真实组合产品来源。三个词均在 COMBINATION_KEYWORDS 中，
+   * 因此通过 pipeline 的 isRealDocument 校验，不会误伤也不会漏掉真实文档。
+   */
+  keywords: ['combination product', 'prefilled syringe', 'auto-injector'],
 } as const;
 
+/** Federal Register 翻页采集上限：单个关键词最多抓取的页数（明确上限，避免死循环） */
+export const MAX_FR_PAGES = 5;
+/** Federal Register 单关键词累计文档上限：达到即停止翻页（性能护栏） */
+export const MAX_FR_DOCS = 100;
+
 /** 近期窗口默认天数（只采集近 N 天发布条目） */
-export const COLLECT_RECENT_DAYS_DEFAULT = 90;
+export const COLLECT_RECENT_DAYS_DEFAULT = 365;
 
 /** 自 ping 保活默认间隔（5 分钟，毫秒） */
 export const KEEPALIVE_INTERVAL_MS = 300000;

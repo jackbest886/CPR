@@ -103,11 +103,11 @@ export function loadConfig(): AppConfig {
     tz: process.env[ENV.TZ] || 'Asia/Shanghai',
     cronEnabled: toBool(process.env[ENV.CRON_ENABLED], true),
     collectCron: process.env[ENV.COLLECT_CRON] || '0 8 * * *',
-    runOnStart: toBool(process.env[ENV.RUN_ON_START], false),
+    runOnStart: toBool(process.env[ENV.RUN_ON_START], true),
     ...resolveLlmConfig(),
     authEnabled: toBool(process.env[ENV.AUTH_ENABLED], false),
     nmpaColumns,
-    collectionEnabled: toBool(process.env[ENV.COLLECTION_ENABLED], false),
+    collectionEnabled: toBool(process.env[ENV.COLLECTION_ENABLED], true),
     collectRecentDays: toNumber(
       process.env[ENV.COLLECT_RECENT_DAYS],
       COLLECT_RECENT_DAYS_DEFAULT,
