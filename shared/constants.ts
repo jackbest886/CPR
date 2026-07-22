@@ -298,6 +298,12 @@ export const FEDERAL_REGISTER_API = {
   keyword: 'combination product',
   perPage: 20,
   /**
+   * 仅采集"拟议规则"和"最终规则"类型,过滤行政事务类公告(NOTICE/PRESDOCU 等)。
+   * OMB 信息收集审查、机构日常公告等均被排除。真实组合产品法规
+   * (21 CFR 3/4 相关拟议/最终规则) 均为 RULE 或 PRORULE 类型。
+   */
+  documentTypes: ['RULE', 'PRORULE'] as const,
+  /**
    * 多关键词采集：每个关键词都单独向 Federal Register 发起翻页查询，且均限定
    * FDA agency（agencySlug）。覆盖 FDA 组合产品的高度精准核心术语（药械 /
    * 生物制品-器械 / 药-生物制品 / 预充注射 / 自动注射 / 注射笔 / 药物洗脱）。

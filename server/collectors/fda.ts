@@ -36,16 +36,18 @@ interface FrApiResponse {
 }
 
 /**
- * 构造 Federal Register API 查询 URL（含近期日期窗口 + 关键词 + 页码）。
+ * 构造 Federal Register API 查询 URL（含近期日期窗口 + 关键词 + 页码 + 文档类型过滤）。
  * 始终限定 FDA agency（agencySlug），不越界到其它机构。
  * @param recentDays 近期窗口天数（从今天往前推）
  * @param keyword 关键词（如 'combination product'），默认 FEDERAL_REGISTER_API.keyword
  * @param page 页码（从 1 开始），默认 1
+ * @param documentTypes 文档类型过滤（默认 RULE/PRORULE，排除 NOTICE 等行政事务类公告）
  */
 export function buildFederalRegisterUrl(
   recentDays: number = COLLECT_RECENT_DAYS_DEFAULT,
   keyword: string = FEDERAL_REGISTER_API.keyword,
   page: number = 1,
+  documentTypes: readonly string[] = FEDERAL_REGISTER_API.documentTypes,
 ): string {
   const gte = new Date();
   gte.setDate(gte.getDate() - recentDays);
@@ -57,6 +59,10 @@ export function buildFederalRegisterUrl(
   params.set('order', 'newest');
   params.set('per_page', String(FEDERAL_REGISTER_API.perPage));
   params.set('page', String(page));
+  // 文档类型过滤:只采集 RULE/PRORULE,排除 NOTICE/PRESDOCU 等行政事务类公告
+  for (const t of documentTypes) {
+    params.append('conditions[type][]', t);
+  }
   return `${FEDERAL_REGISTER_API.baseUrl}?${params.toString()}`;
 }
 
@@ -128,17 +134,22 @@ export class FdaCollector implements Collector {
    *
    * @param keyword 本次查询使用的关键词（来自 FEDERAL_REGISTER_API.keywords）。
    *
-   * provenance 策略（条件式标记）：
-   * 只当文档的**标题或摘要本身**已命中 `COMBINATION_KEYWORDS` 时，才把
+   * provenance 策略（条件式标记 · 仅看标题）：
+   * 只当文档的**标题本身**已命中 `COMBINATION_KEYWORDS` 时，才把
    * `[FR query match: ${keyword}]` provenance 标记追加到 content（作为辅助，
    * 确保 isRealDocument 关键词二次确认通过）。否则**不加任何标记**，仅返回
    * 原始摘要，让 isRealDocument 严格判定——非组合产品文档将被正确过滤。
    *
-   * 这样做的理由：Federal Register 的全文检索是宽松的相关性匹配，可能仅因
-   * 脚注/附件中提及关键词就返回文档。若无条件给每条加 provenance 标记，
-   * 会让 isRealDocument 的关键词二次确认形同虚设（因为 keyword 本身就是
-   * COMBINATION_KEYWORDS 之一，标记注入后必然通过）。条件式标记确保只有
-   * 标题/摘要本身确实涉及组合产品的文档才入库，避免非组合产品文档混入看板。
+   * 为何只看标题而非摘要：Federal Register 的全文检索是宽松的相关性匹配，
+   * 文档可能在 abstract 中"提及"组合产品相关法规条款（如 21 CFR 4），
+   * 但其本身的主题并非组合产品（例如 OMB 信息收集审查公告）。**标题才是
+   * 文档主题的精确反映**——仅当标题命中关键词时才认定该文档确属组合产品
+   * 法规，避免 abstract 仅为"引用/提及"导致噪声文档混入看板。
+   *
+   * 这样做的理由：若无条件给每条加 provenance 标记，会让 isRealDocument
+   * 的关键词二次确认形同虚设（因为 keyword 本身就是 COMBINATION_KEYWORDS
+   * 之一，标记注入后必然通过）。条件式标记确保只有标题本身确实涉及组合
+   * 产品的文档才入库，避免非组合产品文档混入看板。
    *
    * 注意：这**不弱化**四重校验——管线层仍会对每条执行
    * isValidPublishDate / isWithinRecentWindow / isJunkNavigation / isRealDocument
@@ -154,15 +165,12 @@ export class FdaCollector implements Collector {
       )
       .map((doc) => {
         const abstract = doc.abstract ?? '';
-        // 只当标题或摘要本身命中 COMBINATION_KEYWORDS 时，才认为这是真实组合产品文档
-        // 此时加 provenance 标记作为辅助（确保 isRealDocument 通过）；
-        // 否则不加标记，让 isRealDocument 严格判定（非组合产品文档会被正确过滤）
+        // 只检查 title(文档主题的精确反映),不再检查 abstract
+        // 因为 abstract 可能只是"提及"组合产品相关法规条款,文档主题本身并非组合产品
+        // (例如 OMB 信息收集审查公告可能在 abstract 中引用 21 CFR 4)
         const titleLower = (doc.title ?? '').toLowerCase();
-        const abstractLower = abstract.toLowerCase();
         const isComboRelated = COMBINATION_KEYWORDS.some(
-          (kw) =>
-            titleLower.includes(kw.toLowerCase()) ||
-            abstractLower.includes(kw.toLowerCase()),
+          (kw) => titleLower.includes(kw.toLowerCase()),
         );
         const provenanceTag = isComboRelated
           ? `\n\n[FR query match: ${keyword}]`
