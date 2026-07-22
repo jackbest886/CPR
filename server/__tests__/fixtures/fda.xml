@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>FDA CDER Guidance Documents</title>
+    <link>https://www.fda.gov/combination-products</link>
+    <item>
+      <title>Combination Products: Prefilled Syringe Guidance for Industry</title>
+      <link>https://www.fda.gov/combination-products/prefilled-syringe</link>
+      <description>Guidance on prefilled syringe combination products for diabetes.</description>
+      <pubDate>Mon, 15 Jul 2026 12:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Draft Guidance for Comment: Drug-Device Combination Labeling</title>
+      <link>https://www.fda.gov/combination-products/draft-labeling</link>
+      <description>Open for comment on drug-device combination labeling.</description>
+      <pubDate>Tue, 16 Jul 2026 09:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

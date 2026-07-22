@@ -1,0 +1,185 @@
+%% 法规情报追踪系统 · 增量架构 · 类图
+%% RawItem → Regulation 转换、Collector/Classifier/Pipeline 接口契约
+
+classDiagram
+    direction TB
+
+    %% ===== 共享类型（不改字段，仅展示） =====
+    class RawItem {
+        +source: Source
+        +sourceSub?: string
+        +title: string
+        +url: string
+        +publishDate?: string
+        +content?: string
+        +language?: Language
+    }
+
+    class Classification {
+        +type: RegType
+        +status?: RegStatus
+        +tags: string[]
+        +summary: string
+    }
+
+    class Regulation {
+        +id: string
+        +title: string
+        +source: Source
+        +publishDate?: string
+        +type: RegType
+        +summary?: string
+        +originalUrl: string
+        +originalLanguage: Language
+        +fetchedAt: string
+    }
+
+    %% ===== 采集器接口与实现 =====
+    class Collector {
+        <<interface>>
+        +source: Source
+        +collect() Promise~RawItem[]~
+    }
+
+    class FdaCollector {
+        -feeds: SourceFeed[]
+        -parser: Parser
+        -cfg: AppConfig
+        +collect() Promise~RawItem[]~
+        +parseRss(xml, sourceSub) Promise~RawItem[]~
+        +parseFederalRegister(json) RawItem[]
+    }
+
+    class EmaCollector {
+        -feeds: SourceFeed[]
+        -parser: Parser
+        +collect() Promise~RawItem[]~
+        +parseRss(xml, sourceSub) Promise~RawItem[]~
+    }
+
+    class NmpaCollector {
+        -englishColumns: string[]
+        -chineseColumns: string[]
+        +collect() Promise~RawItem[]~
+        -collectFromMirror() Promise~RawItem[]~
+        -collectFromChinese() Promise~RawItem[]~
+        +parseHtml(html, columnUrl, lang) RawItem[]
+    }
+
+    Collector <|.. FdaCollector : implements
+    Collector <|.. EmaCollector : implements
+    Collector <|.. NmpaCollector : implements
+
+    %% ===== 采集器基类工具 =====
+    class BaseUtils {
+        <<utility>>
+        +fetchText(url, timeoutMs?) Promise~string~
+        +normalizeDate(input?) string|undefined
+        +resolveUrl(href, base) string
+        +isValidPublishDate(date?) boolean
+        +isWithinRecentWindow(date, days) boolean
+        +isJunkNavigation(title, url) boolean
+    }
+
+    %% ===== 分类器接口与实现 =====
+    class Classifier {
+        <<interface>>
+        +classify(item: RawItem) Promise~Classification~
+    }
+
+    class RuleClassifier {
+        +classify(item: RawItem) Promise~Classification~
+        -detectType(text) RegType
+        -detectStatus(text) RegStatus|undefined
+        -detectTags(text) string[]
+        -translateEnTitle(title) string
+    }
+
+    class LlmClassifier {
+        -client: OpenAI
+        -model: string
+        -provider?: string
+        -rule: RuleClassifier
+        +classify(item: RawItem) Promise~Classification~
+        -callQwen(item: RawItem) Classification
+    }
+
+    Classifier <|.. RuleClassifier : implements
+    Classifier <|.. LlmClassifier : implements
+    LlmClassifier --> RuleClassifier : fallback
+
+    %% ===== 管线 =====
+    class Pipeline {
+        -collectors: Collector[]
+        -classifier: Classifier
+        -deduplicator: Deduplicator
+        -repository: RegulationRepository
+        -collectRecentDays: number
+        +runOnce() Promise~RunReport~
+        -validateAndFilter(raw: RawItem) boolean
+        -isRealDocument(raw: RawItem) boolean
+        +toRegulation(raw, cls, fetchedAt) Regulation
+    }
+
+    Pipeline --> Collector : iterates
+    Pipeline --> Classifier : uses
+    Pipeline --> Deduplicator : uses
+
+    %% ===== 去重器（不改） =====
+    class Deduplicator {
+        -repo: RegulationRepository
+        +isDuplicate(item: DedupTarget) Promise~DedupHit|null~
+        +normalizeUrl(url) string
+        +similarity(a, b) number
+    }
+
+    %% ===== 仓储（不改） =====
+    class RegulationRepository {
+        -db: DbAdapter
+        +search(filter) Promise~Paginated~Regulation~~
+        +save(reg: Regulation) Promise~void~
+        +findByOriginalUrl(url) Promise~id|null~
+        +listForDedup() Promise~DedupCandidate[]~
+        +getLatestCollectRun() Promise~CollectRunRow|null~
+        +saveCollectRun(report: RunReport) Promise~void~
+    }
+
+    Pipeline --> RegulationRepository : saves
+
+    %% ===== 调度器（不改逻辑） =====
+    class Scheduler {
+        -pipeline: Pipeline
+        -cronEnabled: boolean
+        -collectionEnabled: boolean
+        -cronExpr: string
+        +start() void
+        +runNow() Promise~RunReport~
+    }
+
+    Scheduler --> Pipeline : triggers
+
+    %% ===== 保活（新增） =====
+    class KeepAliveService {
+        <<utility>>
+        +startKeepalive(port, intervalMs) void
+        -pingHealth(port) Promise~void~
+    }
+
+    %% ===== 配置 =====
+    class AppConfig {
+        +dbType: 'sqlite'|'postgres'
+        +port: number
+        +collectCron: string
+        +collectionEnabled: boolean
+        +collectRecentDays: number
+        +keepaliveEnabled: boolean
+        +keepaliveIntervalMs: number
+        +llmProvider?: string
+        +llmApiKey?: string
+        +nmpaColumns: string[]
+    }
+
+    FdaCollector --> AppConfig : reads
+    NmpaCollector --> AppConfig : reads
+    Pipeline --> AppConfig : reads collectRecentDays
+    KeepAliveService --> AppConfig : reads keepalive*

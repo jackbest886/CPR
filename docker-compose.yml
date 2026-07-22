@@ -1,0 +1,21 @@
+services:
+  reggov-tracker:
+    build: .
+    container_name: reggov-tracker
+    ports:
+      - "3000:3000"
+    environment:
+      - TZ=Asia/Shanghai
+      - DB_TYPE=sqlite
+      - DB_PATH=/data/reggov.db
+      - PORT=3000
+      - CRON_ENABLED=true
+      - COLLECT_CRON=0 8 * * *
+      - RUN_ON_START=false
+      # LLM 可选：配置 LLM_API_KEY 即启用 LLM 增强分类
+      - LLM_API_KEY=
+      - AUTH_ENABLED=false
+    volumes:
+      # 持久化 SQLite 数据
+      - ./data:/data
+    restart: unless-stopped

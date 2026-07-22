@@ -1,0 +1,37 @@
+# 依赖
+node_modules/
+
+# 构建产物
+client/dist/
+dist/
+
+# 环境变量（含密钥，禁止提交）
+.env
+.env.local
+.env.*.local
+
+# 数据库（运行时产物，由 npm run seed 重建）
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+
+# 日志
+*.log
+server.log
+npm-debug.log*
+
+# 测试覆盖率
+coverage/
+
+# 临时文件
+.tmp/
+tmp/
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.swp
+
+# 助手内部记忆（非项目代码，勿提交）
+.workbuddy/

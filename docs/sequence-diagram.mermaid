@@ -1,0 +1,134 @@
+%% 法规情报追踪系统 · 增量架构 · 时序图
+%% 定时采集完整流程 + 自 ping 保活
+
+%% ===== 时序图 1: 定时采集完整流程 =====
+sequenceDiagram
+    autonumber
+    participant Cron as node-cron
+    participant Sched as Scheduler
+    participant Pipe as Pipeline
+    participant FDA as FdaCollector
+    participant EMA as EmaCollector
+    participant NMPA as NmpaCollector
+    participant Base as base.ts utils
+    participant Cls as Classifier
+    participant Dedup as Deduplicator
+    participant Repo as RegulationRepository
+    participant DB as SQLite
+
+    Cron->>Sched: trigger (cron expr, tz=Asia/Shanghai)
+    Sched->>Pipe: runOnce()
+
+    Note over Pipe: === 阶段1: 并发采集 ===
+
+    par FDA 采集
+        Pipe->>FDA: collect()
+        FDA->>FDA: parseFederalRegister() — fetch FR API
+        FDA-->>Pipe: RawItem[] (含 publication_date)
+    and EMA 采集
+        Pipe->>EMA: collect()
+        EMA->>EMA: parseRss() — 无日期条目丢弃+warn
+        EMA-->>Pipe: RawItem[] (均带 publishDate)
+    and NMPA 采集
+        Pipe->>NMPA: collect()
+        NMPA->>NMPA: collectFromMirror() — english.nmpa.gov.cn
+        alt 镜像失败
+            NMPA->>NMPA: collectFromChinese() — 降级中文栏目
+        end
+        NMPA-->>Pipe: RawItem[] (英文条目 language=en)
+    end
+
+    Note over Pipe: === 阶段2: 逐条校验过滤 ===
+
+    loop 每条 RawItem
+        Pipe->>Base: isValidPublishDate(raw.publishDate)
+        alt 日期无效/缺失
+            Base-->>Pipe: false
+            Pipe->>Pipe: 丢弃 + console.warn(title)
+        else 日期有效
+            Pipe->>Base: isWithinRecentWindow(date, collectRecentDays)
+            alt 超出窗口(>90天)
+                Base-->>Pipe: false
+                Pipe->>Pipe: 跳过（历史条目）
+            else 窗口内
+                Pipe->>Base: isJunkNavigation(title, url)
+                alt 命中黑名单
+                    Base-->>Pipe: true
+                    Pipe->>Pipe: 丢弃 + warn
+                else 非导航页
+                    Pipe->>Pipe: isRealDocument(raw)
+                    Note right of Pipe: URL路径模式 + 内容长度 + 关键词确认
+                    alt 非真实文档
+                        Pipe->>Pipe: 丢弃 + warn
+                    else 真实文档
+                        Note over Pipe: === 阶段3: 分类 ===
+                        Pipe->>Cls: classify(raw)
+                        alt 有 LLM_API_KEY
+                            Cls->>Cls: LlmClassifier.classify()
+                            Note right of Cls: qwen-plus: 类型+状态+中文标题摘要
+                            Cls-->>Pipe: Classification
+                        else 无 Key / 调用失败
+                            Cls->>Cls: RuleClassifier.classify()
+                            Note right of Cls: 关键词映射 + 抽取式摘要
+                            Cls-->>Pipe: Classification
+                        end
+
+                        Note over Pipe: === 阶段4: 去重 ===
+                        Pipe->>Cls: toRegulation(raw, cls, fetchedAt)
+                        Pipe->>Dedup: isDuplicate(reg)
+                        Dedup->>Repo: findByOriginalUrl(normUrl)
+                        Repo->>DB: SELECT id WHERE original_url=?
+                        DB-->>Repo: row|null
+
+                        alt exact 命中 (URL相同)
+                            Dedup-->>Pipe: {exact: true}
+                            Pipe->>Pipe: 跳过入库（9条精选不被覆盖）
+                        else 模糊命中 (标题相似/正文相同)
+                            Dedup-->>Pipe: {exact: false, id}
+                            Pipe->>Pipe: reg.isDuplicateOf = id
+                            Pipe->>Repo: save(reg)
+                            Repo->>DB: INSERT OR IGNORE
+                        else 非重复
+                            Dedup-->>Pipe: null
+                            Pipe->>Repo: save(reg)
+                            Repo->>DB: INSERT OR IGNORE
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    Note over Pipe: === 阶段5: 汇总报告 ===
+    Pipe->>Repo: saveCollectRun(report)
+    Repo->>DB: INSERT INTO collect_runs
+    Pipe-->>Sched: RunReport {status, perSource, total}
+
+%% ===== 时序图 2: 自 ping 保活 =====
+---
+sequenceDiagram
+    autonumber
+    participant Main as server/index.ts
+    participant KA as KeepAliveService
+    participant Server as Express Server
+    participant Health as /api/health
+    participant DB as SQLite
+
+    Main->>Server: app.listen(port)
+    Main->>KA: startKeepalive(port, intervalMs)
+
+    loop 每 intervalMs (默认5分钟)
+        KA->>Health: fetch http://localhost:{port}/api/health
+        Health->>DB: getLatestCollectRun() (DB连通性检查)
+        DB-->>Health: row|null
+        Health-->>KA: 200 {ok:true, db:sqlite}
+        KA->>KA: console.log('[keepalive] self-ping ok')
+
+        alt 请求失败
+            Health-->>KA: error/timeout
+            KA->>KA: console.warn('[keepalive] self-ping failed')
+            Note right of KA: pm2 守护层兜底：<br/>进程崩溃 → pm2 自动重启
+        end
+    end
+
+    Note over KA,DB: 双保险：setInterval 自 ping 防休眠 + pm2 防崩溃

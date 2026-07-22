@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>EMA Medicines - Human</title>
+    <link>https://www.ema.europa.eu/en/medicines</link>
+    <item>
+      <title>EMA CHMP recommends approval of auto-injector combination therapy</title>
+      <link>https://www.ema.europa.eu/en/medicines/auto-injector</link>
+      <description>Marketing authorization for an auto-injector combination product.</description>
+      <pubDate>Wed, 17 Jul 2026 10:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
