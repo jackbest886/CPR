@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toRegulation } from '../pipeline';
+import { toRegulation, normalizeType, normalizeStatus } from '../pipeline';
 import type { Classification, RawItem } from '../../shared/types';
 
 /**
@@ -81,5 +81,80 @@ describe('toRegulation — 标题保持原文语言', () => {
 
     expect(reg.title).toBe(raw.title);
     expect(reg.title).not.toContain('征求意见');
+  });
+});
+
+/**
+ * 落库前兜底归一化：无论分类器（含 LLM/qwen）返回什么枚举外值，
+ * normalizeType / normalizeStatus 都映射到合法 RegType / RegStatus，
+ * 杜绝因枚举不匹配而丢文档（对应修复 A）。
+ */
+describe('normalizeType / normalizeStatus — 枚举外值兜底', () => {
+  it("qwen 返回「指导文件」→ 指南", () => {
+    expect(normalizeType('指导文件')).toBe('指南');
+  });
+
+  it("qwen 返回「现行有效」→ 已生效", () => {
+    expect(normalizeStatus('现行有效')).toBe('已生效');
+  });
+
+  it('undefined → 其他 / undefined', () => {
+    expect(normalizeType(undefined)).toBe('其他');
+    expect(normalizeStatus(undefined)).toBeUndefined();
+    expect(normalizeStatus(null)).toBeUndefined();
+  });
+
+  it('合法枚举值原样返回', () => {
+    expect(normalizeType('指南')).toBe('指南');
+    expect(normalizeType('法规')).toBe('法规');
+    expect(normalizeType('征求意见')).toBe('征求意见');
+    expect(normalizeType('批准')).toBe('批准');
+    expect(normalizeStatus('已更新')).toBe('已更新');
+    expect(normalizeStatus('已废止')).toBe('已废止');
+    expect(normalizeStatus('征求意见中')).toBe('征求意见中');
+  });
+
+  it('英文关键词也能正确映射', () => {
+    // 'Draft Guidance for Comment' 含 "for comment" → 征求意见（语义正确）
+    expect(normalizeType('Draft Guidance for Comment')).toBe('征求意见');
+    expect(normalizeType('Guidance for Industry')).toBe('指南');
+    expect(normalizeType('Regulatory Framework')).toBe('法规');
+    expect(normalizeStatus('Effective')).toBe('已生效');
+    expect(normalizeStatus('Withdrawn')).toBe('已废止');
+  });
+});
+
+/**
+ * 回归测试：toRegulation 对分类器返回的枚举外值做兜底归一化（双保险）。
+ * 模拟 LLM(qwen) 返回枚举外值（如「指导文件」「现行有效」）时，
+ * 落库 type/status 仍被安全归一化为合法枚举，整条文档不会因枚举不匹配而丢失。
+ */
+describe('toRegulation — 枚举外值兜底归一化', () => {
+  const fetchedAt = '2026-07-23T00:00:00.000Z';
+
+  it('分类器返回「指导文件」「现行有效」被归一化为「指南」「已生效」', () => {
+    const raw: RawItem = {
+      source: 'FDA',
+      title: 'Combination Products Guidance for Industry',
+      url: 'https://www.federalregister.gov/documents/x',
+      publishDate: '2026-07-20',
+      content: 'Guidance on combination products under 21 CFR Part 4.',
+      language: 'en',
+    };
+    // 模拟分类器（如 qwen）返回枚举外值
+    const cls = {
+      type: '指导文件',
+      status: '现行有效',
+      tags: [],
+      summary: 'Combination products guidance.',
+    } as unknown as Classification;
+
+    const reg = toRegulation(raw, cls, fetchedAt);
+
+    expect(reg.type).toBe('指南');
+    expect(reg.status).toBe('已生效');
+    // 其余字段不受影响
+    expect(reg.title).toBe(raw.title);
+    expect(reg.summary).toBe('Combination products guidance.');
   });
 });

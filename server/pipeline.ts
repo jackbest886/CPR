@@ -14,6 +14,8 @@ import type {
   Classification,
   RawItem,
   Regulation,
+  RegStatus,
+  RegType,
   RunReport,
   Source,
 } from '../shared/types';
@@ -29,6 +31,51 @@ import {
 } from './collectors/base';
 import { COMBINATION_KEYWORDS, COLLECT_RECENT_DAYS_DEFAULT } from '../shared/constants';
 
+/**
+ * 将任意字符串安全映射到 `REG_TYPES` 最近成员（落库前兜底）。
+ *
+ * 无论 LLM(qwen) 还是任何分类器返回什么，都映射到合法 `RegType`，
+ * 避免枚举校验不匹配导致整条文档被丢弃。关键词匹配优先级从高到低：
+ *  - 含「征求 / draft for comment / consultation / open for comment / for comment」→ 征求意见
+ *  - 含「批准 / approval / approved / marketing authorization / authorisation」→ 批准
+ *  - 含「指南 / guidance / guide / guideline」→ 指南
+ *  - 含「法规 / regulation / regulatory / directive / 指令」→ 法规
+ *  - 其余 → 其他
+ *
+ * 这样既覆盖合法枚举值原样返回，也覆盖枚举外值（如 qwen 返回「指导文件」→「指南」）。
+ */
+export function normalizeType(raw?: string): RegType {
+  const t = (raw ?? '').toLowerCase();
+  if (/征求|draft for comment|consultation|open for comment|for comment/.test(t))
+    return '征求意见';
+  if (/批准|approval|approved|marketing authorization|authorisation/.test(t))
+    return '批准';
+  if (/指南|guidance|guide|guideline|指导/.test(t)) return '指南';
+  if (/法规|regulation|regulatory|directive|指令/.test(t)) return '法规';
+  return '其他';
+}
+
+/**
+ * 将任意字符串（或 null / undefined）安全映射到 `REG_STATUSES` 最近成员，
+ * 无法识别时返回 `undefined`（落库前兜底）。关键词匹配优先级从高到低：
+ *  - 含「征求 / draft for comment / consultation / open for comment」→ 征求意见中
+ *  - 含「废止 / withdraw / revoked / cancelled / terminated」→ 已废止
+ *  - 含「更新 / update / revised / amended / revision」→ 已更新
+ *  - 含「生效 / in force / effective / enforced / implemented」→ 已生效
+ *  - 其余 → undefined
+ *
+ * 覆盖枚举外值（如 qwen 返回「现行有效」→「已生效」），且保证落库 status 永远合法。
+ */
+export function normalizeStatus(raw?: string | null): RegStatus | undefined {
+  const t = (raw ?? '').toLowerCase();
+  if (/征求|draft for comment|consultation|open for comment/.test(t))
+    return '征求意见中';
+  if (/废止|withdraw|revoked|cancelled|terminated/.test(t)) return '已废止';
+  if (/更新|update|revised|amended|revision/.test(t)) return '已更新';
+  if (/生效|有效|in force|effective|enforced|implemented/.test(t)) return '已生效';
+  return undefined;
+}
+
 /** 由 RawItem + Classification 构建落库 Regulation */
 export function toRegulation(
   raw: RawItem,
@@ -42,8 +89,9 @@ export function toRegulation(
     source: raw.source as Source,
     sourceSub: raw.sourceSub,
     publishDate: raw.publishDate,
-    type: cls.type,
-    status: cls.status,
+    // 双保险：落库前归一化 type/status，杜绝任何分类器返回的枚举外值导致丢文档
+    type: normalizeType(cls.type),
+    status: normalizeStatus(cls.status),
     summary: cls.summary,
     tags: cls.tags,
     originalLanguage: raw.language ?? (raw.source === 'NMPA' ? 'zh' : 'en'),

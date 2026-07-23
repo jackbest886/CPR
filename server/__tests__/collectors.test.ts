@@ -23,6 +23,47 @@ describe('FdaCollector', () => {
     expect(items[0].title).toContain('Prefilled Syringe');
     expect(items[0].publishDate).toBe('2026-07-15');
   });
+
+  it('标题不含组合词但 abstract 含 combination product → 仍加 [FR query match] 标记', () => {
+    const c = new FdaCollector(cfg);
+    // 标题只有 "Guidance for Industry: Design Controls for Drug Delivery Systems"，
+    // 不含任何 COMBINATION_KEYWORDS；abstract 才含 "combination product"。
+    // 修复 B 放宽判定后，仍应追加 provenance 标记，使 isRealDocument 二次确认通过。
+    const json = {
+      count: 1,
+      results: [
+        {
+          title: 'Guidance for Industry: Design Controls for Drug Delivery Systems',
+          html_url: 'https://www.federalregister.gov/documents/abc-123',
+          publication_date: '2026-07-20',
+          abstract:
+            'This guidance clarifies design control expectations for products that meet the definition of a combination product under 21 CFR Part 4.',
+        },
+      ],
+    };
+    const items = c.parseFederalRegister(json, 'combination product');
+    expect(items.length).toBe(1);
+    expect(items[0].content).toContain('[FR query match: combination product]');
+  });
+
+  it('标题与 abstract 均不含组合词 → 不加 provenance 标记（仍被正确过滤）', () => {
+    const c = new FdaCollector(cfg);
+    const json = {
+      count: 1,
+      results: [
+        {
+          title: 'Agency Information Collection Activities; Submission for OMB Review',
+          html_url: 'https://www.federalregister.gov/documents/omb-1',
+          publication_date: '2026-07-20',
+          abstract:
+            'The agency invites comment on a proposed information collection requirement.',
+        },
+      ],
+    };
+    const items = c.parseFederalRegister(json, 'combination product');
+    expect(items.length).toBe(1);
+    expect(items[0].content).not.toContain('[FR query match:');
+  });
 });
 
 describe('EmaCollector', () => {
